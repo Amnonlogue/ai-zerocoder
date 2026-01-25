@@ -2,9 +2,11 @@ package com.it.aizerocoder.service;
 
 import com.it.aizerocoder.model.dto.app.AppQueryRequest;
 import com.it.aizerocoder.model.entity.App;
+import com.it.aizerocoder.model.entity.User;
 import com.it.aizerocoder.model.vo.AppVO;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -21,7 +23,7 @@ public interface AppService extends IService<App> {
      * @param app
      * @return
      */
-    public AppVO getAppVO(App app);
+    AppVO getAppVO(App app);
 
     /**
      * 获取应用封装列表
@@ -37,6 +39,24 @@ public interface AppService extends IService<App> {
      * @param appQueryRequest
      * @return
      */
-    public QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
+    QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
 
+    /**
+     * 通过对话生成应用代码
+     *
+     * @param appId     应用 ID
+     * @param message   对话消息
+     * @param loginUser 登录用户
+     * @return
+     */
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
+    /**
+     * 应用部署
+     *
+     * @param appId
+     * @param loginUser
+     * @return 可访问的部署地址
+     */
+    String deployApp(Long appId, User loginUser);
 }
