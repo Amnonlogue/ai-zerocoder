@@ -64,3 +64,5 @@ create table chat_history
 ) comment '对话历史' collate = utf8mb4_unicode_ci;
 
 
+-- 将 message 字段从 TEXT 改为 MEDIUMTEXT
+ALTER TABLE chat_history MODIFY COLUMN message MEDIUMTEXT NOT NULL COMMENT '消息';
