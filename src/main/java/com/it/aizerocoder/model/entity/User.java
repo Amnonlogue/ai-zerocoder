@@ -93,7 +93,7 @@ public class User implements Serializable {
     /**
      * 是否删除
      */
-    @Column(value = "isDelete", isLogicDelete = true)
+    @Column(value = "isDelete")
     private Integer isDelete;
 
 }

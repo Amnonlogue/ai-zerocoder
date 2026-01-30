@@ -20,6 +20,7 @@ import org.springframework.util.DigestUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 import static com.it.aizerocoder.constant.UserConstant.USER_LOGIN_STATE;
@@ -38,7 +39,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         if (StrUtil.hasBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
+        if (userAccount.length() < 2) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户账号过短");
         }
         if (userPassword.length() < 8 || checkPassword.length() < 8) {
@@ -60,8 +61,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         User user = new User();
         user.setUserAccount(userAccount);
         user.setUserPassword(encryptPassword);
-        user.setUserName("无名");
+        user.setUserName(userAccount);
         user.setUserRole(UserRoleEnum.USER.getValue());
+        // 每次注册生成不同的宽高比
+        Random random = new Random();
+        int width = 150 + random.nextInt(30);
+        int height = 150 + random.nextInt(30);
+        user.setUserAvatar("https://picsum.photos/" + width + "/" + height);
         boolean saveResult = this.save(user);
         if (!saveResult) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
@@ -91,7 +97,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         if (StrUtil.hasBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
+        if (userAccount.length() < 2) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号错误");
         }
         if (userPassword.length() < 8) {
