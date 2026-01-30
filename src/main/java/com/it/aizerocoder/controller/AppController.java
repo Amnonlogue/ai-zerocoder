@@ -16,6 +16,7 @@ import com.it.aizerocoder.model.dto.app.*;
 import com.it.aizerocoder.model.entity.User;
 import com.it.aizerocoder.model.enums.CodeGenTypeEnum;
 import com.it.aizerocoder.model.vo.AppVO;
+import com.it.aizerocoder.service.ScreenshotService;
 import com.it.aizerocoder.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -47,6 +48,9 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ScreenshotService screenshotService;
 
     /**
      * 应用聊天生成代码（流式 SSE）
@@ -129,6 +133,8 @@ public class AppController {
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
         // 暂时设置为多文件生成
         app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
+        //默认封面
+        app.setCover("https://img.freepik.com/premium-photo/artificial-intelligence-technology-wallpaper-background_276152-1261.jpg");
         // 插入数据库
         boolean result = appService.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
@@ -188,6 +194,8 @@ public class AppController {
         if (!oldApp.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
+        // 删除COS截图
+        screenshotService.deleteScreenshot(oldApp.getCover());
         boolean result = appService.removeById(id);
         return ResultUtils.success(result);
     }
@@ -275,6 +283,8 @@ public class AppController {
         // 判断是否存在
         App oldApp = appService.getById(id);
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
+        // 删除COS截图
+        screenshotService.deleteScreenshot(oldApp.getCover());
         boolean result = appService.removeById(id);
         return ResultUtils.success(result);
     }
