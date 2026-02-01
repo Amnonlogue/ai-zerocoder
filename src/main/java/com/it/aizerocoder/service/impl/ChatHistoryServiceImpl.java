@@ -2,6 +2,8 @@ package com.it.aizerocoder.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.it.aizerocoder.constant.UserConstant;
 import com.it.aizerocoder.exception.ErrorCode;
 import com.it.aizerocoder.exception.ThrowUtils;
@@ -16,7 +18,9 @@ import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.it.aizerocoder.model.entity.ChatHistory;
 import com.it.aizerocoder.mapper.ChatHistoryMapper;
 import com.it.aizerocoder.service.ChatHistoryService;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import jakarta.annotation.Resource;
@@ -25,6 +29,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -59,6 +64,36 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     }
 
     @Override
+    public boolean addToolRequestMessage(Long appId, String toolRequestJson, Long userId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(toolRequestJson), ErrorCode.PARAMS_ERROR, "工具请求内容不能为空");
+        ThrowUtils.throwIf(userId == null || userId <= 0, ErrorCode.PARAMS_ERROR, "用户ID不能为空");
+
+        ChatHistory chatHistory = ChatHistory.builder()
+                .appId(appId)
+                .message(toolRequestJson)
+                .messageType(ChatHistoryMessageTypeEnum.TOOL_REQUEST.getValue())
+                .userId(userId)
+                .build();
+        return this.save(chatHistory);
+    }
+
+    @Override
+    public boolean addToolExecutedMessage(Long appId, String toolExecutedJson, Long userId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(toolExecutedJson), ErrorCode.PARAMS_ERROR, "工具执行结果不能为空");
+        ThrowUtils.throwIf(userId == null || userId <= 0, ErrorCode.PARAMS_ERROR, "用户ID不能为空");
+
+        ChatHistory chatHistory = ChatHistory.builder()
+                .appId(appId)
+                .message(toolExecutedJson)
+                .messageType(ChatHistoryMessageTypeEnum.TOOL_EXECUTED.getValue())
+                .userId(userId)
+                .build();
+        return this.save(chatHistory);
+    }
+
+    @Override
     public boolean deleteByAppId(Long appId) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         QueryWrapper queryWrapper = QueryWrapper.create()
@@ -68,8 +103,8 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Override
     public Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize,
-                                                      LocalDateTime lastCreateTime,
-                                                      User loginUser) {
+            LocalDateTime lastCreateTime,
+            User loginUser) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(pageSize <= 0 || pageSize > 50, ErrorCode.PARAMS_ERROR, "页面大小必须在1-50之间");
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
@@ -84,6 +119,12 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         queryRequest.setAppId(appId);
         queryRequest.setLastCreateTime(lastCreateTime);
         QueryWrapper queryWrapper = this.getQueryWrapper(queryRequest);
+
+        // 过滤掉工具调用相关的记录，只展示用户和AI的对话
+        queryWrapper.notIn("messageType", Arrays.asList(
+                ChatHistoryMessageTypeEnum.TOOL_REQUEST.getValue(),
+                ChatHistoryMessageTypeEnum.TOOL_EXECUTED.getValue()));
+
         // 查询数据
         return this.page(Page.of(1, pageSize), queryWrapper);
     }
@@ -107,12 +148,56 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
             // 先清理历史缓存，防止重复加载
             chatMemory.clear();
             for (ChatHistory history : historyList) {
-                if (ChatHistoryMessageTypeEnum.USER.getValue().equals(history.getMessageType())) {
-                    chatMemory.add(UserMessage.from(history.getMessage()));
-                    loadedCount++;
-                } else if (ChatHistoryMessageTypeEnum.AI.getValue().equals(history.getMessageType())) {
-                    chatMemory.add(AiMessage.from(history.getMessage()));
-                    loadedCount++;
+                String messageType = history.getMessageType();
+                String message = history.getMessage();
+
+                ChatHistoryMessageTypeEnum typeEnum = ChatHistoryMessageTypeEnum.getEnumByValue(messageType);
+                if (typeEnum == null) {
+                    log.warn("未知的消息类型: {}", messageType);
+                    continue;
+                }
+
+                switch (typeEnum) {
+                    case USER -> {
+                        chatMemory.add(UserMessage.from(message));
+                        loadedCount++;
+                    }
+                    case AI -> {
+                        chatMemory.add(AiMessage.from(message));
+                        loadedCount++;
+                    }
+                    case TOOL_REQUEST -> {
+                        // 还原工具调用请求
+                        try {
+                            JSONObject json = JSONUtil.parseObj(message);
+                            ToolExecutionRequest request = ToolExecutionRequest.builder()
+                                    .id(json.getStr("id"))
+                                    .name(json.getStr("name"))
+                                    .arguments(json.getStr("arguments"))
+                                    .build();
+                            chatMemory.add(AiMessage.from(request));
+                            loadedCount++;
+                        } catch (Exception e) {
+                            log.warn("解析工具调用请求失败: {}", message, e);
+                        }
+                    }
+                    case TOOL_EXECUTED -> {
+                        // 还原工具执行结果
+                        try {
+                            JSONObject json = JSONUtil.parseObj(message);
+                            ToolExecutionRequest request = ToolExecutionRequest.builder()
+                                    .id(json.getStr("id"))
+                                    .name(json.getStr("name"))
+                                    .arguments(json.getStr("arguments"))
+                                    .build();
+                            String result = json.getStr("result");
+                            ToolExecutionResultMessage resultMessage = ToolExecutionResultMessage.from(request, result);
+                            chatMemory.add(resultMessage);
+                            loadedCount++;
+                        } catch (Exception e) {
+                            log.warn("解析工具执行结果失败: {}", message, e);
+                        }
+                    }
                 }
             }
             log.info("成功为 appId: {} 加载了 {} 条历史对话", appId, loadedCount);
@@ -123,7 +208,6 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
             return 0;
         }
     }
-
 
     @Override
     public QueryWrapper getQueryWrapper(ChatHistoryQueryRequest chatHistoryQueryRequest) {

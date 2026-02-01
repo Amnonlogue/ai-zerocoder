@@ -17,19 +17,40 @@ import java.time.LocalDateTime;
  */
 public interface ChatHistoryService extends IService<ChatHistory> {
 
-
     /**
      * 添加对话历史
+     * 
      * @param appId
      * @param message
      * @param messageType
      * @param userId
      * @return
      */
-    boolean addChatMessage(Long appId,String message,String messageType,Long userId);
+    boolean addChatMessage(Long appId, String message, String messageType, Long userId);
+
+    /**
+     * 添加工具调用请求消息到对话历史
+     * 
+     * @param appId           应用ID
+     * @param toolRequestJson 工具调用请求的JSON字符串（包含id、name、arguments）
+     * @param userId          用户ID
+     * @return 是否添加成功
+     */
+    boolean addToolRequestMessage(Long appId, String toolRequestJson, Long userId);
+
+    /**
+     * 添加工具执行结果消息到对话历史
+     * 
+     * @param appId            应用ID
+     * @param toolExecutedJson 工具执行结果的JSON字符串（包含id、name、arguments、result）
+     * @param userId           用户ID
+     * @return 是否添加成功
+     */
+    boolean addToolExecutedMessage(Long appId, String toolExecutedJson, Long userId);
 
     /**
      * 根据应用id删除对话历史
+     * 
      * @param appId
      * @return
      */
@@ -37,6 +58,7 @@ public interface ChatHistoryService extends IService<ChatHistory> {
 
     /**
      * 分页查询对话历史
+     * 
      * @param appId
      * @param pageSize
      * @param lastCreateTime
@@ -44,15 +66,16 @@ public interface ChatHistoryService extends IService<ChatHistory> {
      * @return
      */
     Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize,
-                                               LocalDateTime lastCreateTime,
-                                               User loginUser);
+            LocalDateTime lastCreateTime,
+            User loginUser);
 
     /**
      * 加载应用对话历史到内存
+     * 
      * @param appId
      * @param chatMemory
-     * @param maxCount 最多加载多少条
-     * @return  加载成功的条数
+     * @param maxCount   最多加载多少条
+     * @return 加载成功的条数
      */
     int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory, int maxCount);
 
