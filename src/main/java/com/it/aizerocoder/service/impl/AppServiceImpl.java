@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.it.aizerocoder.ai.AiAppNameSummaryService;
 import com.it.aizerocoder.ai.AiCodeGenTypeRoutingService;
 import com.it.aizerocoder.constant.AppConstant;
 import com.it.aizerocoder.core.AiCodeGeneratorFacade;
@@ -40,6 +41,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -72,6 +74,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
 
+    @Resource
+    private AiAppNameSummaryService aiAppNameSummaryService;
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
@@ -100,7 +104,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     }
 
-
     @Override
     public Long createApp(AppAddRequest appAddRequest, User loginUser) {
         // 参数校验
@@ -111,10 +114,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         BeanUtil.copyProperties(appAddRequest, app);
         app.setUserId(loginUser.getId());
         app.setCover("https://img.freepik.com/premium-photo/artificial-intelligence-technology-wallpaper-background_276152-1261.jpg");
-        // 应用名称暂时为 initPrompt 前 12 位
-        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 使用 AI 智能选择代码生成类型
-        CodeGenTypeEnum selectedCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        // 使用 AI 并行执行：智能选择代码生成类型 + 总结应用名称
+        CompletableFuture<CodeGenTypeEnum> typeFuture = CompletableFuture.supplyAsync(
+                () -> aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt));
+        CompletableFuture<String> nameFuture = CompletableFuture.supplyAsync(
+                () -> aiAppNameSummaryService.summarizeAppName(initPrompt));
+        CodeGenTypeEnum selectedCodeGenType = typeFuture.join();
+        String aiGeneratedName = nameFuture.join();
+        app.setAppName(aiGeneratedName.substring(0, Math.min(aiGeneratedName.length(), 12)));
         app.setCodeGenType(selectedCodeGenType.getValue());
         // 插入数据库
         boolean result = this.save(app);
@@ -122,7 +129,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
         return app.getId();
     }
-
 
     @Override
     public String deployApp(Long appId, User loginUser) {
