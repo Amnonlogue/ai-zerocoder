@@ -28,7 +28,7 @@ public class UndrawIllustrationTool {
     @Tool("搜索插画图片，用于网站美化和装饰")
     public List<ImageResource> searchIllustrations(@P("搜索关键词") String query) {
         List<ImageResource> imageList = new ArrayList<>();
-        int searchCount = 12;
+        int searchCount = 5;
         String apiUrl = String.format(UNDRAW_API_URL, query, query);
 
         // 使用 try-with-resources 自动释放 HTTP 资源
