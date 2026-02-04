@@ -74,6 +74,12 @@ public class WorkflowContext implements Serializable {
     private QualityResult qualityResult;
 
     /**
+     * 质检重试次数
+     */
+    @Builder.Default
+    private int qualityCheckRetryCount = 0;
+
+    /**
      * 错误信息
      */
     private String errorMessage;

@@ -50,9 +50,9 @@ public class CodeGenWorkflow {
                     .addConditionalEdges("code_quality_check",
                             edge_async(this::routeAfterQualityCheck),
                             Map.of(
-                                    "build", "project_builder",   // 质检通过且需要构建
-                                    "skip_build", END,            // 质检通过但跳过构建
-                                    "fail", "code_generator"      // 质检失败，重新生成
+                                    "build", "project_builder", // 质检通过且需要构建
+                                    "skip_build", END, // 质检通过但跳过构建
+                                    "fail", "code_generator" // 质检失败，重新生成
                             ))
                     .addEdge("project_builder", END)
 
@@ -97,7 +97,13 @@ public class CodeGenWorkflow {
     }
 
     /**
+     * 质检最大重试次数
+     */
+    private static final int MAX_QUALITY_CHECK_RETRY = 2;
+
+    /**
      * 根据质检结果决定下一步
+     * 
      * @param state
      * @return
      */
@@ -106,7 +112,14 @@ public class CodeGenWorkflow {
         QualityResult qualityResult = context.getQualityResult();
         // 如果质检失败，重新生成代码
         if (qualityResult == null || !qualityResult.getIsValid()) {
-            log.error("代码质检失败，需要重新生成代码");
+            // 检查重试次数是否已达上限
+            if (context.getQualityCheckRetryCount() >= MAX_QUALITY_CHECK_RETRY) {
+                log.warn("质检重试次数已达上限({})，强制通过", MAX_QUALITY_CHECK_RETRY);
+                return routeBuildOrSkip(state);
+            }
+            // 增加重试计数
+            context.setQualityCheckRetryCount(context.getQualityCheckRetryCount() + 1);
+            log.error("代码质检失败，第 {} 次重试", context.getQualityCheckRetryCount());
             return "fail";
         }
         // 质检通过，使用原有的构建路由逻辑
@@ -116,6 +129,7 @@ public class CodeGenWorkflow {
 
     /**
      * 根据生成类型决定是否需要构建
+     * 
      * @param state
      * @return
      */
