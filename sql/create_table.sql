@@ -66,3 +66,16 @@ create table chat_history
 
 -- 将 message 字段从 TEXT 改为 MEDIUMTEXT
 ALTER TABLE chat_history MODIFY COLUMN message MEDIUMTEXT NOT NULL COMMENT '消息';
+
+
+-- 图片资源表
+CREATE TABLE image_resource (
+                                id BIGINT PRIMARY KEY COMMENT '主键（雪花算法）',
+                                appId BIGINT NOT NULL COMMENT '关联应用ID',
+                                category VARCHAR(32) NOT NULL COMMENT '图片类型：CONTENT/ILLUSTRATION/DIAGRAM/LOGO',
+                                description VARCHAR(255) COMMENT '图片描述',
+                                url VARCHAR(512) NOT NULL COMMENT '图片URL',
+                                createTime DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                isDelete TINYINT DEFAULT 0 COMMENT '逻辑删除',
+                                INDEX idx_appId (appId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='图片资源表';

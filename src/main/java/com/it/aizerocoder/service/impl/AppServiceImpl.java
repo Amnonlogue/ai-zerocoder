@@ -25,8 +25,10 @@ import com.it.aizerocoder.model.vo.AppVO;
 import com.it.aizerocoder.model.vo.UserVO;
 import com.it.aizerocoder.service.AppService;
 import com.it.aizerocoder.service.ChatHistoryService;
+import com.it.aizerocoder.service.ImageResourceService;
 import com.it.aizerocoder.service.ScreenshotService;
 import com.it.aizerocoder.service.UserService;
+import com.it.aizerocoder.model.entity.ImageResource;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
@@ -77,6 +79,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private AiAppNameSummaryService aiAppNameSummaryService;
 
+    @Resource
+    private ImageResourceService imageResourceService;
+
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
         // 1. 参数校验
@@ -96,10 +101,32 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
         }
         // 5. 通过校验后，添加用户消息到对话历史
-        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
-        // 6. 调用 AI 生成代码（流式）
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集 AI 响应内容并在完成后记录到对话历史
+        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(),
+                loginUser.getId());
+        // 6. 获取图片资源
+        List<ImageResource> images = imageResourceService.getByAppId(appId);
+        // 首次对话且图片未就绪，流式收集并反馈进度
+        if (CollUtil.isEmpty(images)) {
+            // 获取初始 prompt 用于图片收集
+            String initPrompt = app.getInitPrompt();
+            // 进度流 + 代码生成流
+            Flux<String> progressFlux = imageResourceService.collectImagesWithProgress(appId, initPrompt);
+            Flux<String> codeFlux = Flux.defer(() -> {
+                List<ImageResource> collectedImages = imageResourceService.getByAppId(appId);
+                String enhancedMessage = imageResourceService.enhancePrompt(message, collectedImages);
+                Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(enhancedMessage,
+                        codeGenTypeEnum, appId);
+                return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser,
+                        codeGenTypeEnum);
+            });
+            return progressFlux.concatWith(codeFlux);
+        }
+        // 非首次对话，直接增强提示词并生成
+        String enhancedMessage = imageResourceService.enhancePrompt(message, images);
+        // 7. 调用 AI 生成代码（流式）
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(enhancedMessage, codeGenTypeEnum,
+                appId);
+        // 8. 收集 AI 响应内容并在完成后记录到对话历史
         return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
 
     }
@@ -113,7 +140,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
         app.setUserId(loginUser.getId());
-        app.setCover("https://img.freepik.com/premium-photo/artificial-intelligence-technology-wallpaper-background_276152-1261.jpg");
+        app.setCover(
+                "https://img.freepik.com/premium-photo/artificial-intelligence-technology-wallpaper-background_276152-1261.jpg");
         // 使用 AI 并行执行：智能选择代码生成类型 + 总结应用名称
         CompletableFuture<CodeGenTypeEnum> typeFuture = CompletableFuture.supplyAsync(
                 () -> aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt));
@@ -127,6 +155,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
+        // 异步触发图片收集
+        imageResourceService.collectImagesAsync(app.getId(), initPrompt);
         return app.getId();
     }
 
@@ -157,15 +187,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (!sourceDir.exists() || !sourceDir.isDirectory()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
         }
-        //7.Vue项目特殊处理,执行构建
+        // 7.Vue项目特殊处理,执行构建
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
             boolean buildSuccess = vueProjectBuilder.buildProject(sourceDirPath);
             ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "构建Vue项目失败,请重试");
-            //检查dist目录是否存在
+            // 检查dist目录是否存在
             File distDir = new File(sourceDirPath, "dist");
             ThrowUtils.throwIf(!distDir.exists(), ErrorCode.SYSTEM_ERROR, "Vue项目构建完成但未生成 dist 目录");
-            //构建完成后,需要将构建后的目录复制到部署目录
+            // 构建完成后,需要将构建后的目录复制到部署目录
             sourceDir = distDir;
         }
         // 8. 复制文件到部署目录
@@ -211,7 +241,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         });
     }
 
-
     @Override
     public AppVO getAppVO(App app) {
         if (app == null) {
@@ -247,7 +276,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return appVO;
         }).collect(Collectors.toList());
     }
-
 
     @Override
     public QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest) {
@@ -298,6 +326,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         } catch (Exception e) {
             // 记录日志但不阻止应用删除
             log.error("删除应用关联对话历史失败: {}", e.getMessage());
+        }
+        // 删除关联的图片资源
+        try {
+            imageResourceService.deleteByAppId(appId);
+        } catch (Exception e) {
+            log.error("删除应用关联图片资源失败: {}", e.getMessage());
         }
         // 删除应用
         return super.removeById(id);
