@@ -2,7 +2,6 @@ package com.it.aizerocoder.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import com.it.aizerocoder.langgraph4j.ai.ImageCollectionPlanService;
-import com.it.aizerocoder.langgraph4j.model.ImageCollectionPlan;
 import com.it.aizerocoder.langgraph4j.tools.ImageSearchTool;
 import com.it.aizerocoder.langgraph4j.tools.LogoGeneratorTool;
 import com.it.aizerocoder.langgraph4j.tools.MermaidDiagramTool;
@@ -20,7 +19,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -52,44 +50,6 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
     private LogoGeneratorTool logoGeneratorTool;
 
     @Override
-    public void collectImagesAsync(Long appId, String prompt) {
-        // 使用 CompletableFuture 异步执行图片收集
-        CompletableFuture.runAsync(() -> {
-            try {
-                log.info("开始异步收集图片，appId: {}", appId);
-                List<ImageResource> collectedImages = doCollectImages(prompt);
-                if (CollUtil.isNotEmpty(collectedImages)) {
-                    saveImageResources(appId, collectedImages);
-                    log.info("图片收集完成，appId: {}, 收集数量: {}", appId, collectedImages.size());
-                } else {
-                    log.info("图片收集结果为空，appId: {}", appId);
-                }
-            } catch (Exception e) {
-                log.warn("图片收集失败，不影响主流程，appId: {}, error: {}", appId, e.getMessage());
-            }
-        });
-    }
-
-    @Override
-    public List<ImageResource> waitForCollection(Long appId, int timeoutSeconds) {
-        long deadline = System.currentTimeMillis() + timeoutSeconds * 1000L;
-        while (System.currentTimeMillis() < deadline) {
-            List<ImageResource> images = getByAppId(appId);
-            if (CollUtil.isNotEmpty(images)) {
-                return images;
-            }
-            try {
-                Thread.sleep(500); // 每500ms轮询一次
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        log.info("等待图片收集超时，appId: {}", appId);
-        return Collections.emptyList();
-    }
-
-    @Override
     public List<ImageResource> getByAppId(Long appId) {
         if (appId == null || appId <= 0) {
             return Collections.emptyList();
@@ -105,15 +65,26 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
             return message;
         }
         StringBuilder enhanced = new StringBuilder(message);
-        enhanced.append("\n\n## 可用素材资源\n");
-        enhanced.append("请在生成网站时使用以下图片资源，将这些图片合理地嵌入到网站的相应位置中。\n");
-        for (ImageResource img : images) {
-            enhanced.append("- ")
-                    .append(img.getCategory())
-                    .append("：")
-                    .append(img.getDescription())
-                    .append("（").append(img.getUrl()).append("）\n");
+        enhanced.append("\n\n## 可用图片资源（JSON格式，URL必须原样使用）\n");
+        enhanced.append("```json\n[\n");
+
+        for (int i = 0; i < images.size(); i++) {
+            ImageResource img = images.get(i);
+            enhanced.append("  {\n");
+            enhanced.append("    \"id\": ").append(i + 1).append(",\n");
+            enhanced.append("    \"type\": \"").append(img.getCategory()).append("\",\n");
+            enhanced.append("    \"description\": \"").append(img.getDescription()).append("\",\n");
+            enhanced.append("    \"exactUrl\": \"").append(img.getUrl()).append("\"\n");
+            enhanced.append("  }");
+            if (i < images.size() - 1) {
+                enhanced.append(",");
+            }
+            enhanced.append("\n");
         }
+
+        enhanced.append("]\n```\n");
+        enhanced.append("⚠️ 使用图片时，必须从上述JSON中复制exactUrl的值，不得修改任何字符（包括连字符-和下划线_）！\n");
+
         return enhanced.toString();
     }
 
@@ -230,145 +201,6 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
      * 收集结果记录
      */
     private record CollectResult(String type, List<com.it.aizerocoder.langgraph4j.model.ImageResource> images) {
-    }
-
-    /**
-     * 从计划同步执行收集（用于异步方法复用）
-     */
-    private List<com.it.aizerocoder.langgraph4j.model.ImageResource> doCollectImagesFromPlan(ImageCollectionPlan plan) {
-        List<com.it.aizerocoder.langgraph4j.model.ImageResource> allImages = new ArrayList<>();
-
-        if (plan.getContentImageTasks() != null) {
-            for (var task : plan.getContentImageTasks()) {
-                try {
-                    allImages.addAll(imageSearchTool.searchContentImages(task.query()));
-                } catch (Exception e) {
-                    log.warn("内容图片搜索失败: {}", e.getMessage());
-                }
-            }
-        }
-        if (plan.getIllustrationTasks() != null) {
-            for (var task : plan.getIllustrationTasks()) {
-                try {
-                    allImages.addAll(undrawIllustrationTool.searchIllustrations(task.query()));
-                } catch (Exception e) {
-                    log.warn("插画图片搜索失败: {}", e.getMessage());
-                }
-            }
-        }
-        if (plan.getDiagramTasks() != null) {
-            for (var task : plan.getDiagramTasks()) {
-                try {
-                    allImages.addAll(mermaidDiagramTool.generateMermaidDiagram(task.mermaidCode(), task.description()));
-                } catch (Exception e) {
-                    log.warn("架构图生成失败: {}", e.getMessage());
-                }
-            }
-        }
-        if (plan.getLogoTasks() != null) {
-            for (var task : plan.getLogoTasks()) {
-                try {
-                    allImages.addAll(logoGeneratorTool.generateLogos(task.description()));
-                } catch (Exception e) {
-                    log.warn("Logo生成失败: {}", e.getMessage());
-                }
-            }
-        }
-        return allImages;
-    }
-
-    /**
-     * 执行图片收集（复用 ImageCollectorNode 的并发逻辑）
-     *
-     * @param prompt 用户提示词
-     * @return 收集到的图片资源列表
-     */
-    private List<ImageResource> doCollectImages(String prompt) {
-        List<com.it.aizerocoder.langgraph4j.model.ImageResource> collectedImages = new ArrayList<>();
-
-        try {
-            // 第一步：AI规划收集任务
-            ImageCollectionPlan plan = imageCollectionPlanService.planImageCollection(prompt);
-            log.info("获取到图片收集计划，开始并发执行");
-
-            // 第二步：并发执行各种图片收集任务
-            List<CompletableFuture<List<com.it.aizerocoder.langgraph4j.model.ImageResource>>> futures = new ArrayList<>();
-
-            // 并发执行内容图片搜索
-            if (plan.getContentImageTasks() != null) {
-                for (ImageCollectionPlan.ImageSearchTask task : plan.getContentImageTasks()) {
-                    futures.add(CompletableFuture.supplyAsync(() -> {
-                        try {
-                            return imageSearchTool.searchContentImages(task.query());
-                        } catch (Exception e) {
-                            log.warn("内容图片搜索失败: {}", e.getMessage());
-                            return Collections.emptyList();
-                        }
-                    }));
-                }
-            }
-
-            // 并发执行插画图片搜索
-            if (plan.getIllustrationTasks() != null) {
-                for (ImageCollectionPlan.IllustrationTask task : plan.getIllustrationTasks()) {
-                    futures.add(CompletableFuture.supplyAsync(() -> {
-                        try {
-                            return undrawIllustrationTool.searchIllustrations(task.query());
-                        } catch (Exception e) {
-                            log.warn("插画图片搜索失败: {}", e.getMessage());
-                            return Collections.emptyList();
-                        }
-                    }));
-                }
-            }
-
-            // 并发执行架构图生成
-            if (plan.getDiagramTasks() != null) {
-                for (ImageCollectionPlan.DiagramTask task : plan.getDiagramTasks()) {
-                    futures.add(CompletableFuture.supplyAsync(() -> {
-                        try {
-                            return mermaidDiagramTool.generateMermaidDiagram(task.mermaidCode(), task.description());
-                        } catch (Exception e) {
-                            log.warn("架构图生成失败: {}", e.getMessage());
-                            return Collections.emptyList();
-                        }
-                    }));
-                }
-            }
-
-            // 并发执行Logo生成
-            if (plan.getLogoTasks() != null) {
-                for (ImageCollectionPlan.LogoTask task : plan.getLogoTasks()) {
-                    futures.add(CompletableFuture.supplyAsync(() -> {
-                        try {
-                            return logoGeneratorTool.generateLogos(task.description());
-                        } catch (Exception e) {
-                            log.warn("Logo生成失败: {}", e.getMessage());
-                            return Collections.emptyList();
-                        }
-                    }));
-                }
-            }
-
-            // 等待所有任务完成并收集结果
-            CompletableFuture<Void> allTasks = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-            allTasks.join();
-
-            // 收集所有结果
-            for (CompletableFuture<List<com.it.aizerocoder.langgraph4j.model.ImageResource>> future : futures) {
-                List<com.it.aizerocoder.langgraph4j.model.ImageResource> images = future.get();
-                if (images != null) {
-                    collectedImages.addAll(images);
-                }
-            }
-            log.info("并发图片收集完成，共收集到 {} 张图片", collectedImages.size());
-
-        } catch (Exception e) {
-            log.error("图片收集失败: {}", e.getMessage(), e);
-        }
-
-        // 转换为实体类
-        return convertToEntities(collectedImages);
     }
 
     /**

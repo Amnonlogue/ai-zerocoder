@@ -13,23 +13,6 @@ import java.util.List;
 public interface ImageResourceService extends IService<ImageResource> {
 
     /**
-     * 异步收集图片资源
-     *
-     * @param appId  应用ID
-     * @param prompt 用户提示词
-     */
-    void collectImagesAsync(Long appId, String prompt);
-
-    /**
-     * 同步等待图片收集完成
-     *
-     * @param appId          应用ID
-     * @param timeoutSeconds 超时时间（秒）
-     * @return 收集到的图片资源列表
-     */
-    List<ImageResource> waitForCollection(Long appId, int timeoutSeconds);
-
-    /**
      * 根据应用ID查询图片资源
      *
      * @param appId 应用ID

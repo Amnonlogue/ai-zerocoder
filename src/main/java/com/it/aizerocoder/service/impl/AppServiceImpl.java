@@ -155,8 +155,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
-        // 异步触发图片收集
-        imageResourceService.collectImagesAsync(app.getId(), initPrompt);
         return app.getId();
     }
 
