@@ -1,5 +1,6 @@
 package com.it.aizerocoder.ai;
 
+import com.it.aizerocoder.utils.SpringContextUtil;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
@@ -14,17 +15,22 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class AiAppNameSummaryServiceFactory {
 
-    @Resource
-    private ChatModel chatModel;
-
     /**
      * 创建AI应用名称总结服务实例
      */
-    @Bean
-    public AiAppNameSummaryService aiAppNameSummaryService() {
-        log.info("创建 AiAppNameSummaryService 实例");
+    public AiAppNameSummaryService createAiAppNameSummaryService() {
+        // 动态获取多例的路由 ChatModel，支持并发
+        ChatModel chatModel = SpringContextUtil.getBean("chatModelPrototype", ChatModel.class);
         return AiServices.builder(AiAppNameSummaryService.class)
                 .chatModel(chatModel)
                 .build();
+    }
+
+    /**
+     * 默认提供一个 Bean
+     */
+    @Bean
+    public AiAppNameSummaryService aiAppNameSummaryService() {
+        return createAiAppNameSummaryService();
     }
 }

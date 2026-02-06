@@ -6,7 +6,9 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.it.aizerocoder.ai.AiAppNameSummaryService;
+import com.it.aizerocoder.ai.AiAppNameSummaryServiceFactory;
 import com.it.aizerocoder.ai.AiCodeGenTypeRoutingService;
+import com.it.aizerocoder.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.it.aizerocoder.constant.AppConstant;
 import com.it.aizerocoder.core.AiCodeGeneratorFacade;
 import com.it.aizerocoder.core.builder.VueProjectBuilder;
@@ -74,10 +76,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private ScreenshotService screenshotService;
 
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     @Resource
-    private AiAppNameSummaryService aiAppNameSummaryService;
+    private AiAppNameSummaryServiceFactory aiAppNameSummaryServiceFactory;
 
     @Resource
     private ImageResourceService imageResourceService;
@@ -143,8 +145,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setCover(
                 "https://img.freepik.com/premium-photo/artificial-intelligence-technology-wallpaper-background_276152-1261.jpg");
         // 使用 AI 并行执行：智能选择代码生成类型 + 总结应用名称
+        //使用 AI 智能选择代码生成类型(多例)
+        AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
         CompletableFuture<CodeGenTypeEnum> typeFuture = CompletableFuture.supplyAsync(
                 () -> aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt));
+        AiAppNameSummaryService aiAppNameSummaryService = aiAppNameSummaryServiceFactory.createAiAppNameSummaryService();
         CompletableFuture<String> nameFuture = CompletableFuture.supplyAsync(
                 () -> aiAppNameSummaryService.summarizeAppName(initPrompt));
         CodeGenTypeEnum selectedCodeGenType = typeFuture.join();

@@ -2,6 +2,7 @@ package com.it.aizerocoder.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import com.it.aizerocoder.langgraph4j.ai.ImageCollectionPlanService;
+import com.it.aizerocoder.langgraph4j.ai.ImageCollectionPlanServiceFactory;
 import com.it.aizerocoder.langgraph4j.tools.ImageSearchTool;
 import com.it.aizerocoder.langgraph4j.tools.LogoGeneratorTool;
 import com.it.aizerocoder.langgraph4j.tools.MermaidDiagramTool;
@@ -35,7 +36,7 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
         implements ImageResourceService {
 
     @Resource
-    private ImageCollectionPlanService imageCollectionPlanService;
+    private ImageCollectionPlanServiceFactory imageCollectionPlanServiceFactory;
 
     @Resource
     private ImageSearchTool imageSearchTool;
@@ -108,7 +109,11 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
                 .synchronizedList(new ArrayList<>());
 
         Flux<String> collectAndSaveFlux = Mono
-                .fromCallable(() -> imageCollectionPlanService.planImageCollection(prompt))
+                .fromCallable(() -> {
+                    // 为每次调用创建新的 AI 服务实例，支持并发
+                    ImageCollectionPlanService planService = imageCollectionPlanServiceFactory.createImageCollectionPlanService();
+                    return planService.planImageCollection(prompt);
+                })
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(plan -> {
                     List<Mono<CollectResult>> monos = new ArrayList<>();
