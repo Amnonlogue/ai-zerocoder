@@ -6,8 +6,6 @@ import cn.hutool.json.JSONUtil;
 import com.it.aizerocoder.ai.model.message.*;
 import com.it.aizerocoder.ai.tools.BaseTool;
 import com.it.aizerocoder.ai.tools.ToolManager;
-import com.it.aizerocoder.constant.AppConstant;
-import com.it.aizerocoder.core.builder.VueProjectBuilder;
 import com.it.aizerocoder.model.entity.User;
 import com.it.aizerocoder.model.enums.ChatHistoryMessageTypeEnum;
 import com.it.aizerocoder.service.ChatHistoryService;
@@ -26,9 +24,6 @@ import java.util.Set;
 @Slf4j
 @Component
 public class JsonMessageStreamHandler {
-
-    @Resource
-    private VueProjectBuilder vueProjectBuilder;
 
     @Resource
     private ToolManager toolManager;
@@ -65,9 +60,6 @@ public class JsonMessageStreamHandler {
                         chatHistoryService.addChatMessage(appId, aiTextResponse,
                                 ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                     }
-                    // 异步构造Vue 项目
-                    String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
-                    vueProjectBuilder.buildProjectAsync(projectPath);
                 })
                 .doOnError(error -> {
                     // 如果AI回复失败，也要记录错误消息
