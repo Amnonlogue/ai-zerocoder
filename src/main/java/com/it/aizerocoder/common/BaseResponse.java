@@ -3,10 +3,12 @@ package com.it.aizerocoder.common;
 
 import com.it.aizerocoder.exception.ErrorCode;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
 @Data
+@NoArgsConstructor
 public class BaseResponse<T> implements Serializable {
 
     private int code;
