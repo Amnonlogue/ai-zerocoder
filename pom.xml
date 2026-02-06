@@ -47,6 +47,19 @@
         <dependency>
             <groupId>org.springframework.session</groupId>
             <artifactId>spring-session-data-redis</artifactId>
+            <exclusions>
+                <!-- 排除Spring Session自带的Redisson -->
+                <exclusion>
+                    <groupId>org.redisson</groupId>
+                    <artifactId>redisson</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- Redisson -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>3.50.0</version>
         </dependency>
         <!-- Langchain4j -->
         <dependency>
