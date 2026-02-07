@@ -128,6 +128,7 @@ public class AppController {
      * @return 应用 id
      */
     @PostMapping("/add")
+    @RateLimit(limitType = RateLimitType.USER,rate = 3,rateInterval = 60,message = "AI 对话请求过于频繁,请稍后再试")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(request);

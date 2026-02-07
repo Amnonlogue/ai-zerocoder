@@ -1,5 +1,6 @@
 package com.it.aizerocoder.langgraph4j.ai;
 
+import com.it.aizerocoder.ai.guardrail.PromptSafetyInputGuardrail;
 import com.it.aizerocoder.utils.SpringContextUtil;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
@@ -23,6 +24,7 @@ public class ImageCollectionPlanServiceFactory {
         ChatModel chatModel = SpringContextUtil.getBean("chatModelPrototype", ChatModel.class);
         return AiServices.builder(ImageCollectionPlanService.class)
                 .chatModel(chatModel)
+                .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
                 .build();
     }
     /**
