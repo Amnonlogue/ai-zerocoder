@@ -1,12 +1,14 @@
 package com.it.aizerocoder.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.it.aizerocoder.langgraph4j.ai.ImageCollectionPlanService;
 import com.it.aizerocoder.langgraph4j.ai.ImageCollectionPlanServiceFactory;
 import com.it.aizerocoder.langgraph4j.tools.ImageSearchTool;
 import com.it.aizerocoder.langgraph4j.tools.LogoGeneratorTool;
 import com.it.aizerocoder.langgraph4j.tools.MermaidDiagramTool;
 import com.it.aizerocoder.langgraph4j.tools.UndrawIllustrationTool;
+import com.it.aizerocoder.manger.CosManager;
 import com.it.aizerocoder.mapper.ImageResourceMapper;
 import com.it.aizerocoder.model.entity.ImageResource;
 import com.it.aizerocoder.service.ImageResourceService;
@@ -49,6 +51,9 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
 
     @Resource
     private LogoGeneratorTool logoGeneratorTool;
+
+    @Resource
+    private CosManager cosManager;
 
     @Override
     public List<ImageResource> getByAppId(Long appId) {
@@ -94,9 +99,36 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
         if (appId == null || appId <= 0) {
             return false;
         }
+        // 1. 先查询该应用的所有图片资源
+        List<ImageResource> images = getByAppId(appId);
+        // 2. 删除 COS 上的图片文件（Logo 和架构图存储在自己的 COS 上）
+        if (CollUtil.isNotEmpty(images)) {
+            for (ImageResource image : images) {
+                String url = image.getUrl();
+                // 只删除存储在自己 COS 上的图片
+                if (StrUtil.isNotBlank(url) && isCosUrl(url)) {
+                    try {
+                        boolean deleted = cosManager.deleteFileByUrl(url);
+                        if (deleted) {
+                            log.info("删除图片资源成功: {}", url);
+                        }
+                    } catch (Exception e) {
+                        log.error("删除图片资源失败: {}, 错误: {}", url, e.getMessage());
+                    }
+                }
+            }
+        }
+        // 3. 删除数据库记录
         QueryWrapper queryWrapper = QueryWrapper.create()
                 .eq("appId", appId);
         return this.remove(queryWrapper);
+    }
+
+    /**
+     * 判断 URL 是否为自己 COS 的 URL
+     */
+    private boolean isCosUrl(String url) {
+        return url != null && url.contains("myqcloud.com");
     }
 
     @Override
@@ -111,7 +143,8 @@ public class ImageResourceServiceImpl extends ServiceImpl<ImageResourceMapper, I
         Flux<String> collectAndSaveFlux = Mono
                 .fromCallable(() -> {
                     // 为每次调用创建新的 AI 服务实例，支持并发
-                    ImageCollectionPlanService planService = imageCollectionPlanServiceFactory.createImageCollectionPlanService();
+                    ImageCollectionPlanService planService = imageCollectionPlanServiceFactory
+                            .createImageCollectionPlanService();
                     return planService.planImageCollection(prompt);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
