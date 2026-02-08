@@ -26,29 +26,16 @@ import java.util.UUID;
 @Slf4j
 public class WebScreenshotUtils {
 
-    private static final WebDriver webDriver;
-
-    static {
-        final int DEFAULT_WIDTH = 1600;
-        final int DEFAULT_HEIGHT = 900;
-        webDriver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    }
-
-    @PreDestroy
-    public void destroy() {
-        webDriver.quit();
-    }
-
-
     /**
      * 初始化 Chrome 浏览器驱动
      */
     private static WebDriver initChromeDriver(int width, int height) {
         try {
             // 自动管理 ChromeDriver
-            //WebDriverManager. chromedriver().setup();
+            // WebDriverManager. chromedriver().setup();
             // 使用本地 ChromeDriver
-            String chromeDriverPath = System.getProperty("user.dir") + "/src/main/resources/web_drivers/chromedriver.exe";
+            String chromeDriverPath = System.getProperty("user.dir")
+                    + "/src/main/resources/web_drivers/chromedriver.exe";
             System.setProperty("webdriver.chrome.driver", chromeDriverPath);
             // 配置 Chrome 选项
             ChromeOptions options = new ChromeOptions();
@@ -65,7 +52,8 @@ public class WebScreenshotUtils {
             // 禁用扩展
             options.addArguments("--disable-extensions");
             // 设置用户代理
-            options.addArguments("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            options.addArguments(
+                    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
             // 创建驱动
             WebDriver driver = new ChromeDriver(options);
             // 设置页面加载超时
@@ -90,7 +78,11 @@ public class WebScreenshotUtils {
             log.error("网页URL不能为空");
             return null;
         }
+        WebDriver webDriver = null;
         try {
+            // 每次截图都创建一个新的 WebDriver
+            webDriver = initChromeDriver(1600, 900);
+
             // 创建临时目录
             String rootPath = System.getProperty("user.dir") + File.separator + "tmp" + File.separator + "screenshots"
                     + File.separator + UUID.randomUUID().toString().substring(0, 8);
@@ -119,6 +111,15 @@ public class WebScreenshotUtils {
         } catch (Exception e) {
             log.error("网页截图失败: {}", webUrl, e);
             return null;
+        } finally {
+            // 确保释放资源
+            if (webDriver != null) {
+                try {
+                    webDriver.quit();
+                } catch (Exception e) {
+                    log.error("关闭浏览器驱动失败", e);
+                }
+            }
         }
     }
 
@@ -144,8 +145,7 @@ public class WebScreenshotUtils {
             ImgUtil.compress(
                     FileUtil.file(originalImagePath),
                     FileUtil.file(compressedImagePath),
-                    COMPRESSION_QUALITY
-            );
+                    COMPRESSION_QUALITY);
         } catch (Exception e) {
             log.error("压缩图片失败: {} -> {}", originalImagePath, compressedImagePath, e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "压缩图片失败");
@@ -160,10 +160,8 @@ public class WebScreenshotUtils {
             // 创建等待页面加载对象
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
             // 等待 document.readyState 为complete
-            wait.until(webDriver ->
-                    ((JavascriptExecutor) webDriver).executeScript("return document.readyState")
-                            .equals("complete")
-            );
+            wait.until(webDriver -> ((JavascriptExecutor) webDriver).executeScript("return document.readyState")
+                    .equals("complete"));
             // 额外等待一段时间，确保动态内容加载完成
             Thread.sleep(2000);
             log.info("页面加载完成");

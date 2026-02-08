@@ -20,8 +20,7 @@ spring:
       ttl: 3600
       password:
       database: 0
-  profiles:
-    active: local
+
 
 server:
   port: 8123
