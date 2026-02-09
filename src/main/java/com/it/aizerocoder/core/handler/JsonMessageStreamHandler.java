@@ -107,7 +107,24 @@ public class JsonMessageStreamHandler {
 
                     // 根据工具名称获取工具实例
                     BaseTool tool = toolManager.getTool(toolRequestMessage.getName());
-                    return tool.generateToolRequestResponse();
+                    String toolResponse = tool.generateToolRequestResponse();
+                    
+                    // 兼容GLM模型：检查arguments是否包含完整内容
+                    String arguments = toolRequestMessage.getArguments();
+                    if (arguments != null && arguments.length() > 100) {
+                        try {
+                            JSONObject argsJson = JSONUtil.parseObj(arguments);
+                            String content = argsJson.getStr("content");
+                            if (content != null && !content.isEmpty()) {
+                                // GLM模式：返回工具响应 + 完整代码内容
+                                return toolResponse + "\n```\n" + content + "\n```\n";
+                            }
+                        } catch (Exception e) {
+                            // 解析失败，使用原有逻辑
+                        }
+                    }
+                    // DeepSeek模式：只返回工具响应，代码会流式输出
+                    return toolResponse;
                 } else {
                     // 不是第一次调用这个工具，直接返回空
                     return "";
